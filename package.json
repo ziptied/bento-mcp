@@ -9,13 +9,13 @@
   "bin": {
     "bento-mcp": "./build/index.js"
   },
-  "files": [
-    "build"
-  ],
+  "files": ["build"],
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
     "dev": "tsc --watch",
     "start": "node build/index.js",
+    "lint": "biome lint .",
+    "format": "biome format . --write",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -46,6 +46,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
   }
