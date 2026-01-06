@@ -4,6 +4,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Analytics } from "@bentonow/bento-node-sdk";
+import { createRequire } from "node:module";
+
+// Read version from package.json
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json");
+const VERSION: string = packageJson.version;
 
 // Initialize Bento client from environment variables
 function getBentoClient(): Analytics {
@@ -13,7 +19,7 @@ function getBentoClient(): Analytics {
 
   if (!publishableKey || !secretKey || !siteUuid) {
     throw new Error(
-      "Missing required environment variables: BENTO_PUBLISHABLE_KEY, BENTO_SECRET_KEY, BENTO_SITE_UUID"
+      "Missing required environment variables: BENTO_PUBLISHABLE_KEY, BENTO_SECRET_KEY, BENTO_SITE_UUID",
     );
   }
 
@@ -29,29 +35,95 @@ function getBentoClient(): Analytics {
 // Create MCP server
 const server = new McpServer({
   name: "bento",
-  version: "1.0.0",
+  version: VERSION,
 });
 
-// Helper to format responses
-function formatResponse(data: unknown): string {
+// =============================================================================
+// RESPONSE HELPERS
+// =============================================================================
+
+function successResponse(data: unknown, context?: string) {
+  let text: string;
+
   if (data === null || data === undefined) {
-    return "No data returned";
+    text = context ? `${context}: No data returned` : "No data returned";
+  } else if (typeof data === "boolean") {
+    text = data
+      ? context
+        ? `${context}: Success`
+        : "Operation completed successfully"
+      : context
+        ? `${context}: Operation failed`
+        : "Operation failed";
+  } else if (typeof data === "number") {
+    text = context ? `${context}: ${data}` : `Result: ${data}`;
+  } else if (Array.isArray(data)) {
+    if (data.length === 0) {
+      text = context ? `${context}: No items found` : "No items found";
+    } else {
+      text = context
+        ? `${context} (${data.length} items):\n${JSON.stringify(data, null, 2)}`
+        : `Found ${data.length} items:\n${JSON.stringify(data, null, 2)}`;
+    }
+  } else if (typeof data === "object") {
+    text = context
+      ? `${context}:\n${JSON.stringify(data, null, 2)}`
+      : JSON.stringify(data, null, 2);
+  } else {
+    text = String(data);
   }
-  if (typeof data === "boolean") {
-    return data ? "Success" : "Operation failed";
-  }
-  if (typeof data === "number") {
-    return `Count: ${data}`;
-  }
-  return JSON.stringify(data, null, 2);
+
+  return {
+    content: [{ type: "text" as const, text }],
+  };
 }
 
-// Helper for error handling
-function handleError(error: unknown): string {
+function errorResponse(error: unknown, operation?: string) {
+  let message: string;
+
   if (error instanceof Error) {
-    return `Error: ${error.message}`;
+    message = error.message;
+
+    // Provide more helpful messages for common errors
+    if (message.includes("Missing required environment variables")) {
+      message = `Configuration error: ${message}. Please ensure BENTO_PUBLISHABLE_KEY, BENTO_SECRET_KEY, and BENTO_SITE_UUID are set.`;
+    } else if (
+      message.includes("401") ||
+      message.toLowerCase().includes("unauthorized")
+    ) {
+      message =
+        "Authentication failed: Invalid API credentials. Please check your BENTO_PUBLISHABLE_KEY and BENTO_SECRET_KEY.";
+    } else if (
+      message.includes("404") ||
+      message.toLowerCase().includes("not found")
+    ) {
+      message = `Resource not found: ${message}`;
+    } else if (message.includes("429")) {
+      message =
+        "Rate limit exceeded: Too many requests. Please wait before trying again.";
+    } else if (message.includes("500") || message.includes("502")) {
+      message =
+        "Bento API error: The service is temporarily unavailable. Please try again later.";
+    }
+  } else {
+    message = String(error);
   }
-  return `Error: ${String(error)}`;
+
+  const text = operation
+    ? `Failed to ${operation}: ${message}`
+    : `Error: ${message}`;
+
+  return {
+    content: [{ type: "text" as const, text }],
+    isError: true,
+  };
+}
+
+function validationError(message: string) {
+  return {
+    content: [{ type: "text" as const, text: `Validation error: ${message}` }],
+    isError: true,
+  };
 }
 
 // =============================================================================
@@ -60,172 +132,185 @@ function handleError(error: unknown): string {
 
 server.tool(
   "bento_get_subscriber",
-  "Get subscriber details by email or UUID.",
+  "Look up a Bento subscriber by email or UUID. Returns subscriber details including tags, fields, and subscription status.",
   {
     email: z.string().email().optional().describe("Subscriber email address"),
     uuid: z.string().optional().describe("Subscriber UUID"),
   },
   async ({ email, uuid }) => {
-    try {
-      if (!email && !uuid) {
-        return {
-          content: [{ type: "text", text: "Either email or uuid is required" }],
-        };
-      }
+    if (!email && !uuid) {
+      return validationError(
+        "Either email or uuid is required to look up a subscriber",
+      );
+    }
 
+    try {
       const bento = getBentoClient();
       const subscriber = await bento.V1.Subscribers.getSubscribers(
-        email ? { email } : { uuid: uuid! }
+        email ? { email } : { uuid: uuid as string },
       );
 
-      return {
-        content: [{ type: "text", text: formatResponse(subscriber) }],
-      };
+      if (!subscriber) {
+        return successResponse(
+          null,
+          `Subscriber ${email || uuid} not found in Bento`,
+        );
+      }
+
+      return successResponse(
+        subscriber,
+        `Subscriber details for ${email || uuid}`,
+      );
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `get subscriber ${email || uuid}`);
     }
-  }
+  },
 );
 
 server.tool(
   "bento_batch_import_subscribers",
-  "Import or update subscribers with fields and tags. Does not trigger automations.",
+  "Import or update multiple subscribers at once (up to 1000). Supports custom fields and tags. Does NOT trigger automations - use for bulk imports only.",
   {
     subscribers: z
       .array(
         z
           .object({
-            email: z.string().email(),
-            firstName: z.string().optional(),
-            lastName: z.string().optional(),
+            email: z.string().email().describe("Subscriber email address"),
+            firstName: z.string().optional().describe("First name"),
+            lastName: z.string().optional().describe("Last name"),
             tags: z.string().optional().describe("Comma-separated tags to add"),
             removeTags: z
               .string()
               .optional()
               .describe("Comma-separated tags to remove"),
           })
-          .passthrough()
+          .passthrough(),
       )
-      .describe("Subscribers to import (max 1000)"),
+      .describe("Array of subscribers to import (max 1000)"),
   },
   async ({ subscribers }) => {
-    try {
-      if (subscribers.length > 1000) {
-        return {
-          content: [
-            { type: "text", text: "Error: Maximum 1000 subscribers per batch" },
-          ],
-        };
-      }
+    if (subscribers.length === 0) {
+      return validationError("At least one subscriber is required");
+    }
 
+    if (subscribers.length > 1000) {
+      return validationError(
+        `Maximum 1000 subscribers per batch, received ${subscribers.length}`,
+      );
+    }
+
+    try {
       const bento = getBentoClient();
       const count = await bento.V1.Batch.importSubscribers({
         subscribers: subscribers.map((s) => {
-          const { firstName, lastName, removeTags, ...rest } = s;
+          const {
+            firstName,
+            lastName,
+            removeTags,
+            email,
+            tags,
+            ...customFields
+          } = s;
           return {
-            ...rest,
+            email,
+            tags,
             first_name: firstName,
             last_name: lastName,
             remove_tags: removeTags,
+            ...customFields,
           };
         }),
       });
 
-      return {
-        content: [
-          { type: "text", text: `Successfully imported ${count} subscribers` },
-        ],
-      };
+      return successResponse(
+        { imported: count, total: subscribers.length },
+        `Successfully imported ${count} of ${subscribers.length} subscribers`,
+      );
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, "import subscribers");
     }
-  }
+  },
 );
 
 // =============================================================================
 // TAG TOOLS
 // =============================================================================
 
-server.tool("bento_list_tags", "List all tags.", {}, async () => {
-  try {
-    const bento = getBentoClient();
-    const tags = await bento.V1.Tags.getTags();
+server.tool(
+  "bento_list_tags",
+  "List all tags in your Bento account.",
+  {},
+  async () => {
+    try {
+      const bento = getBentoClient();
+      const tags = await bento.V1.Tags.getTags();
 
-    return {
-      content: [{ type: "text", text: formatResponse(tags) }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: handleError(error) }],
-    };
-  }
-});
+      return successResponse(tags, "Tags in your Bento account");
+    } catch (error) {
+      return errorResponse(error, "list tags");
+    }
+  },
+);
 
 server.tool(
   "bento_create_tag",
-  "Create a new tag.",
+  "Create a new tag in your Bento account.",
   {
-    name: z.string().describe("Tag name"),
+    name: z.string().min(1).describe("Tag name to create"),
   },
   async ({ name }) => {
     try {
       const bento = getBentoClient();
-      const tags = await bento.V1.Tags.createTag({ name });
+      const tag = await bento.V1.Tags.createTag({ name });
 
-      return {
-        content: [{ type: "text", text: formatResponse(tags) }],
-      };
+      return successResponse(tag, `Created tag "${name}"`);
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `create tag "${name}"`);
     }
-  }
+  },
 );
 
 // =============================================================================
 // FIELD TOOLS
 // =============================================================================
 
-server.tool("bento_list_fields", "List all custom fields.", {}, async () => {
-  try {
-    const bento = getBentoClient();
-    const fields = await bento.V1.Fields.getFields();
+server.tool(
+  "bento_list_fields",
+  "List all custom fields defined in your Bento account.",
+  {},
+  async () => {
+    try {
+      const bento = getBentoClient();
+      const fields = await bento.V1.Fields.getFields();
 
-    return {
-      content: [{ type: "text", text: formatResponse(fields) }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: handleError(error) }],
-    };
-  }
-});
+      return successResponse(fields, "Custom fields in your Bento account");
+    } catch (error) {
+      return errorResponse(error, "list custom fields");
+    }
+  },
+);
 
 server.tool(
   "bento_create_field",
-  "Create a new custom field.",
+  "Create a new custom field in your Bento account. The key is automatically converted to a display name (e.g., 'firstName' becomes 'First Name').",
   {
-    key: z.string().describe("Field key (e.g., 'firstName', 'company_name')"),
+    key: z
+      .string()
+      .min(1)
+      .describe(
+        "Field key in camelCase or snake_case (e.g., 'firstName', 'company_name')",
+      ),
   },
   async ({ key }) => {
     try {
       const bento = getBentoClient();
-      const fields = await bento.V1.Fields.createField({ key });
+      const field = await bento.V1.Fields.createField({ key });
 
-      return {
-        content: [{ type: "text", text: formatResponse(fields) }],
-      };
+      return successResponse(field, `Created custom field "${key}"`);
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `create custom field "${key}"`);
     }
-  }
+  },
 );
 
 // =============================================================================
@@ -239,8 +324,9 @@ server.tool(
     email: z.string().email().describe("Subscriber email address"),
     type: z
       .string()
+      .min(1)
       .describe(
-        "Event type/name (e.g., '$pageView', 'signup_completed', 'feature_used')"
+        "Event type/name (e.g., '$pageView', 'signup_completed', 'feature_used')",
       ),
     fields: z
       .record(z.unknown())
@@ -250,7 +336,7 @@ server.tool(
       .record(z.unknown())
       .optional()
       .describe(
-        "Additional event details (e.g., { url: '/pricing', source: 'campaign' })"
+        "Additional event details (e.g., { url: '/pricing', source: 'campaign' })",
       ),
   },
   async ({ email, type, fields, details }) => {
@@ -263,15 +349,14 @@ server.tool(
         details,
       });
 
-      return {
-        content: [{ type: "text", text: formatResponse(result) }],
-      };
+      return successResponse(
+        result,
+        `Tracked event "${type}" for subscriber ${email}`,
+      );
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `track event "${type}" for ${email}`);
     }
-  }
+  },
 );
 
 // =============================================================================
@@ -280,59 +365,59 @@ server.tool(
 
 server.tool(
   "bento_get_site_stats",
-  "Get site statistics including subscriber and broadcast counts.",
+  "Get overall statistics for your Bento site including subscriber counts, broadcast counts, and engagement rates.",
   {},
   async () => {
     try {
       const bento = getBentoClient();
       const stats = await bento.V1.Stats.getSiteStats();
 
-      return {
-        content: [{ type: "text", text: formatResponse(stats) }],
-      };
+      return successResponse(stats, "Bento site statistics");
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, "get site statistics");
     }
-  }
+  },
 );
 
 // =============================================================================
 // BROADCAST TOOLS
 // =============================================================================
 
-server.tool("bento_list_broadcasts", "List all broadcasts.", {}, async () => {
-  try {
-    const bento = getBentoClient();
-    const broadcasts = await bento.V1.Broadcasts.getBroadcasts();
+server.tool(
+  "bento_list_broadcasts",
+  "List all email broadcasts/campaigns in your Bento account.",
+  {},
+  async () => {
+    try {
+      const bento = getBentoClient();
+      const broadcasts = await bento.V1.Broadcasts.getBroadcasts();
 
-    return {
-      content: [{ type: "text", text: formatResponse(broadcasts) }],
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text", text: handleError(error) }],
-    };
-  }
-});
+      return successResponse(broadcasts, "Broadcasts in your Bento account");
+    } catch (error) {
+      return errorResponse(error, "list broadcasts");
+    }
+  },
+);
 
 server.tool(
   "bento_create_broadcast",
-  "Create a draft broadcast.",
+  "Create a new email broadcast/campaign as a draft. The broadcast will need to be sent manually from the Bento dashboard.",
   {
-    name: z.string().describe("Internal name for the broadcast"),
-    subject: z.string().describe("Email subject line"),
-    content: z.string().describe("Email content (HTML, plain text, or markdown)"),
+    name: z.string().min(1).describe("Internal name for the broadcast"),
+    subject: z.string().min(1).describe("Email subject line"),
+    content: z
+      .string()
+      .min(1)
+      .describe("Email content (HTML, plain text, or markdown)"),
     type: z
       .enum(["plain", "html", "markdown"])
       .default("html")
       .describe("Content type"),
-    fromName: z.string().describe("Sender name"),
+    fromName: z.string().min(1).describe("Sender name"),
     fromEmail: z
       .string()
       .email()
-      .describe("Sender email (must be an authorized Author)"),
+      .describe("Sender email (must be an authorized Author in Bento)"),
     inclusiveTags: z
       .string()
       .optional()
@@ -341,11 +426,12 @@ server.tool(
       .string()
       .optional()
       .describe("Comma-separated tags - subscribers with these are excluded"),
-    segmentId: z.string().optional().describe("Target a specific segment"),
+    segmentId: z.string().optional().describe("Target a specific segment ID"),
     batchSizePerHour: z
       .number()
+      .positive()
       .optional()
-      .describe("Sending rate limit (emails per hour)"),
+      .describe("Sending rate limit (emails per hour, default: 1000)"),
   },
   async ({
     name,
@@ -361,7 +447,7 @@ server.tool(
   }) => {
     try {
       const bento = getBentoClient();
-      const broadcasts = await bento.V1.Broadcasts.createBroadcast([
+      const broadcast = await bento.V1.Broadcasts.createBroadcast([
         {
           name,
           subject,
@@ -375,15 +461,14 @@ server.tool(
         },
       ]);
 
-      return {
-        content: [{ type: "text", text: formatResponse(broadcasts) }],
-      };
+      return successResponse(
+        broadcast,
+        `Created draft broadcast "${name}" with subject "${subject}"`,
+      );
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `create broadcast "${name}"`);
     }
-  }
+  },
 );
 
 // =============================================================================
@@ -392,7 +477,7 @@ server.tool(
 
 server.tool(
   "bento_list_automations",
-  "List email sequences and/or workflows with their templates.",
+  "List email sequences and/or workflows in your Bento account with their templates.",
   {
     type: z
       .enum(["sequences", "workflows", "all"])
@@ -411,15 +496,18 @@ server.tool(
         results.workflows = await bento.V1.Workflows.getWorkflows();
       }
 
-      return {
-        content: [{ type: "text", text: formatResponse(results) }],
-      };
+      const context =
+        type === "all"
+          ? "Sequences and workflows"
+          : type === "sequences"
+            ? "Email sequences"
+            : "Workflows";
+
+      return successResponse(results, `${context} in your Bento account`);
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `list ${type}`);
     }
-  }
+  },
 );
 
 // =============================================================================
@@ -428,50 +516,47 @@ server.tool(
 
 server.tool(
   "bento_get_email_template",
-  "Get email template content by ID.",
+  "Get the full content of an email template by ID. Returns the template's name, subject, HTML content, and stats.",
   {
-    id: z.number().describe("Email template ID"),
+    id: z.number().positive().describe("Email template ID"),
   },
   async ({ id }) => {
     try {
       const bento = getBentoClient();
       const template = await bento.V1.EmailTemplates.getEmailTemplate({ id });
 
-      return {
-        content: [{ type: "text", text: formatResponse(template) }],
-      };
+      if (!template) {
+        return successResponse(null, `Email template with ID ${id} not found`);
+      }
+
+      return successResponse(template, `Email template (ID: ${id})`);
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `get email template ${id}`);
     }
-  }
+  },
 );
 
 server.tool(
   "bento_update_email_template",
-  "Update email template subject and/or content.",
+  "Update an email template's subject line and/or HTML content. Changes take effect immediately for future sends.",
   {
-    id: z.number().describe("Email template ID"),
+    id: z.number().positive().describe("Email template ID to update"),
     subject: z.string().optional().describe("New subject line"),
     html: z
       .string()
       .optional()
-      .describe("New HTML content (must include {{ visitor.unsubscribe_url }})"),
+      .describe(
+        "New HTML content (must include {{ visitor.unsubscribe_url }} for compliance)",
+      ),
   },
   async ({ id, subject, html }) => {
-    try {
-      if (!subject && !html) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Either subject or html (or both) is required to update",
-            },
-          ],
-        };
-      }
+    if (!subject && !html) {
+      return validationError(
+        "Either subject or html (or both) is required to update a template",
+      );
+    }
 
+    try {
       const bento = getBentoClient();
       const template = await bento.V1.EmailTemplates.updateEmailTemplate({
         id,
@@ -479,15 +564,18 @@ server.tool(
         html,
       });
 
-      return {
-        content: [{ type: "text", text: formatResponse(template) }],
-      };
+      const updated = [subject && "subject", html && "content"]
+        .filter(Boolean)
+        .join(" and ");
+
+      return successResponse(
+        template,
+        `Updated email template ${id} (${updated})`,
+      );
     } catch (error) {
-      return {
-        content: [{ type: "text", text: handleError(error) }],
-      };
+      return errorResponse(error, `update email template ${id}`);
     }
-  }
+  },
 );
 
 // =============================================================================
@@ -497,8 +585,26 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Bento MCP Server running on stdio");
+  console.error(`Bento MCP Server v${VERSION} running on stdio`);
 }
+
+// Graceful shutdown handling
+function shutdown(signal: string) {
+  console.error(`\nReceived ${signal}, shutting down gracefully...`);
+  server
+    .close()
+    .then(() => {
+      console.error("Server closed");
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("Error during shutdown:", err);
+      process.exit(1);
+    });
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 main().catch((error) => {
   console.error("Fatal error:", error);
