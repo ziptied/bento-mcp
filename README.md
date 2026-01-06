@@ -4,14 +4,14 @@ A Model Context Protocol (MCP) server for [Bento](https://bentonow.com) - the em
 
 ## Features
 
-- **Subscriber Management** - Create, lookup, and update subscribers
-- **Tagging** - Add and remove tags from subscribers
-- **Event Tracking** - Track custom events and purchases
-- **Field Management** - Manage custom subscriber fields
-- **Email Sending** - Send transactional emails
+- **Subscriber Management** - Import, update, and lookup subscribers
+- **Tagging** - Create and manage tags
+- **Event Tracking** - Track custom events
+- **Field Management** - Create and list custom fields
 - **Broadcasts** - Create and list email campaigns
-- **Statistics** - Get site, segment, and report stats
-- **Experimental** - Email validation, gender guessing, geolocation, and more
+- **Automations** - View sequences and workflows
+- **Email Templates** - Read and update email template content
+- **Statistics** - Get site-level stats
 
 ## Installation
 
@@ -102,83 +102,69 @@ Add to your Cursor MCP settings:
 
 ## Available Tools
 
-### Subscriber Management
+### Subscribers
 
 | Tool | Description |
 |------|-------------|
-| `bento_get_subscriber` | Look up a subscriber by email or UUID |
-| `bento_create_subscriber` | Create a new subscriber |
-| `bento_upsert_subscriber` | Create or update subscriber with fields and tags |
-| `bento_add_subscriber` | Subscribe a user (triggers automations) |
-| `bento_remove_subscriber` | Unsubscribe a user |
+| `bento_get_subscriber` | Get subscriber details by email or UUID |
+| `bento_batch_import_subscribers` | Import or update subscribers with fields and tags |
 
-### Tagging
+### Tags
 
 | Tool | Description |
 |------|-------------|
-| `bento_tag_subscriber` | Add a tag to a subscriber (triggers automations) |
-| `bento_remove_tag` | Remove a tag from a subscriber |
-| `bento_list_tags` | List all tags in your account |
+| `bento_list_tags` | List all tags |
 | `bento_create_tag` | Create a new tag |
 
-### Event Tracking
+### Fields
 
 | Tool | Description |
 |------|-------------|
-| `bento_track_event` | Track a custom event |
-| `bento_track_purchase` | Track a purchase (for LTV calculations) |
-
-### Field Management
-
-| Tool | Description |
-|------|-------------|
-| `bento_update_fields` | Update custom fields on a subscriber |
 | `bento_list_fields` | List all custom fields |
 | `bento_create_field` | Create a new custom field |
 
-### Email & Broadcasts
+### Events
 
 | Tool | Description |
 |------|-------------|
-| `bento_send_email` | Send a transactional email |
-| `bento_list_broadcasts` | List all broadcasts/campaigns |
-| `bento_create_broadcast` | Create a new broadcast |
-| `bento_batch_import_subscribers` | Bulk import subscribers (up to 1000) |
+| `bento_track_event` | Track a custom event for a subscriber |
 
 ### Statistics
 
 | Tool | Description |
 |------|-------------|
-| `bento_get_site_stats` | Get overall site statistics |
-| `bento_get_segment_stats` | Get statistics for a segment |
-| `bento_get_report_stats` | Get statistics for a broadcast/report |
+| `bento_get_site_stats` | Get site statistics |
 
-### Experimental
+### Broadcasts
 
 | Tool | Description |
 |------|-------------|
-| `bento_validate_email` | Validate an email address |
-| `bento_guess_gender` | Guess gender from a first name |
-| `bento_geolocate_ip` | Get location data for an IP address |
-| `bento_check_blacklist` | Check if domain/IP is blacklisted |
-| `bento_moderate_content` | AI content moderation |
+| `bento_list_broadcasts` | List all broadcasts |
+| `bento_create_broadcast` | Create a draft broadcast |
 
-### Forms
+### Automations
 
 | Tool | Description |
 |------|-------------|
-| `bento_get_form_responses` | Get responses for a Bento form |
+| `bento_list_automations` | List sequences and/or workflows |
+
+### Email Templates
+
+| Tool | Description |
+|------|-------------|
+| `bento_get_email_template` | Get email template content by ID |
+| `bento_update_email_template` | Update email template subject and/or content |
 
 ## Example Prompts
 
 Once configured, you can ask your AI assistant things like:
 
 - "Look up the subscriber john@example.com in Bento"
-- "Add the tag 'premium-user' to jane@example.com"
-- "Track a purchase of $99.99 for order #12345 for customer@example.com"
+- "Import these 5 subscribers with the 'newsletter' tag"
 - "Show me the site statistics from Bento"
-- "Create a new broadcast email for users tagged as 'newsletter'"
 - "What are all the tags in my Bento account?"
+- "Create a new broadcast for the spring sale"
+- "List all my email sequences"
 
 ## Development
 

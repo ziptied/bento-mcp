@@ -41,7 +41,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@bentonow/bento-node-sdk": "github:bentonow/bento-node-sdk",
+    "@bentonow/bento-node-sdk": "^1.0.4",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.24.0"
   },
