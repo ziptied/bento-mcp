@@ -131,7 +131,7 @@ function validationError(message: string) {
 // =============================================================================
 
 server.tool(
-  "bento_get_subscriber",
+  "get_subscriber",
   "Look up a Bento subscriber by email or UUID. Returns subscriber details including tags, fields, and subscription status.",
   {
     email: z.string().email().optional().describe("Subscriber email address"),
@@ -168,7 +168,7 @@ server.tool(
 );
 
 server.tool(
-  "bento_batch_import_subscribers",
+  "batch_import_subscribers",
   "Import or update multiple subscribers at once (up to 1000). Supports custom fields and tags. Does NOT trigger automations - use for bulk imports only.",
   {
     subscribers: z
@@ -237,7 +237,7 @@ server.tool(
 // =============================================================================
 
 server.tool(
-  "bento_list_tags",
+  "list_tags",
   "List all tags in your Bento account.",
   {},
   async () => {
@@ -253,7 +253,7 @@ server.tool(
 );
 
 server.tool(
-  "bento_create_tag",
+  "create_tag",
   "Create a new tag in your Bento account.",
   {
     name: z.string().min(1).describe("Tag name to create"),
@@ -275,7 +275,7 @@ server.tool(
 // =============================================================================
 
 server.tool(
-  "bento_list_fields",
+  "list_fields",
   "List all custom fields defined in your Bento account.",
   {},
   async () => {
@@ -291,7 +291,7 @@ server.tool(
 );
 
 server.tool(
-  "bento_create_field",
+  "create_field",
   "Create a new custom field in your Bento account. The key is automatically converted to a display name (e.g., 'firstName' becomes 'First Name').",
   {
     key: z
@@ -317,16 +317,150 @@ server.tool(
 // EVENT TOOLS
 // =============================================================================
 
+// Purchase event types that require special validation
+const PURCHASE_EVENT_TYPES = [
+  "$purchase",
+  "purchase",
+  "order",
+  "order_complete",
+  "event_sale",
+];
+
+// Schema for cart items (optional)
+const CartItemSchema = z
+  .object({
+    product_sku: z.string().optional().describe("Product SKU"),
+    product_name: z.string().optional().describe("Product name"),
+    quantity: z.number().optional().describe("Quantity purchased"),
+  })
+  .passthrough();
+
+// Schema for cart (optional)
+const CartSchema = z
+  .object({
+    items: z.array(CartItemSchema).optional().describe("Array of cart items"),
+    abandoned_checkout_url: z
+      .string()
+      .url()
+      .optional()
+      .describe("URL to abandoned checkout"),
+  })
+  .passthrough();
+
+// Schema for purchase event details
+const PurchaseDetailsSchema = z
+  .object({
+    unique: z.object({
+      key: z
+        .string()
+        .min(1)
+        .describe("Unique key to prevent double-counting (e.g., order ID)"),
+    }),
+    value: z.object({
+      currency: z
+        .string()
+        .length(3)
+        .describe("ISO 4217 currency code (e.g., 'USD', 'EUR')"),
+      amount: z
+        .number()
+        .min(0)
+        .describe("Amount in cents (e.g., 4000 for $40.00)"),
+    }),
+    cart: CartSchema.optional().describe("Optional cart details with items"),
+  })
+  .passthrough();
+
+// Generate a random unique key for purchase events
+function generateUniqueKey(): string {
+  return `mcp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+}
+
+// Validate and transform purchase event details
+function validatePurchaseDetails(
+  details: Record<string, unknown> | undefined,
+):
+  | { valid: true; details: Record<string, unknown> }
+  | { valid: false; error: string } {
+  // If no details provided, return error
+  if (!details) {
+    return {
+      valid: false,
+      error:
+        "Purchase events require 'details' with 'unique.key' and 'value' (currency + amount)",
+    };
+  }
+
+  // Check for value object
+  const value = details.value as Record<string, unknown> | undefined;
+  if (!value) {
+    return {
+      valid: false,
+      error:
+        "Purchase events require 'details.value' with 'currency' (ISO 4217 code) and 'amount' (in cents)",
+    };
+  }
+
+  // Validate currency
+  if (typeof value.currency !== "string" || value.currency.length !== 3) {
+    return {
+      valid: false,
+      error:
+        "Purchase events require 'details.value.currency' as a 3-letter ISO 4217 code (e.g., 'USD', 'EUR')",
+    };
+  }
+
+  // Validate amount
+  if (typeof value.amount !== "number" || value.amount < 0) {
+    return {
+      valid: false,
+      error:
+        "Purchase events require 'details.value.amount' as a positive number in cents (e.g., 4000 for $40.00)",
+    };
+  }
+
+  // Auto-generate unique key if not provided
+  const unique = details.unique as Record<string, unknown> | undefined;
+  if (!unique || !unique.key) {
+    const generatedKey = generateUniqueKey();
+    return {
+      valid: true,
+      details: {
+        ...details,
+        unique: { key: generatedKey },
+      },
+    };
+  }
+
+  return { valid: true, details };
+}
+
 server.tool(
-  "bento_track_event",
-  "Track a custom event for a subscriber. Events can trigger automations. Common event types: $pageView, $signup, $login, or any custom event name.",
+  "track_event",
+  `Track a custom event for a subscriber. Events can trigger automations.
+
+Common event types: $pageView, $signup, $login, or any custom event name.
+
+**IMPORTANT: For purchase events (${PURCHASE_EVENT_TYPES.join(", ")}), the details object MUST include:**
+- \`unique.key\`: A unique identifier to prevent double-counting (e.g., order ID). Auto-generated if not provided.
+- \`value.currency\`: ISO 4217 currency code (e.g., "USD", "EUR")
+- \`value.amount\`: Amount in cents (e.g., 4000 for $40.00)
+- \`cart\` (optional): Cart details with items array
+
+Example purchase event details:
+{
+  "unique": { "key": "order_12345" },
+  "value": { "currency": "USD", "amount": 4000 },
+  "cart": {
+    "items": [{ "product_sku": "SKU123", "product_name": "Widget", "quantity": 2 }]
+  }
+}`,
   {
     email: z.string().email().describe("Subscriber email address"),
     type: z
       .string()
       .min(1)
       .describe(
-        "Event type/name (e.g., '$pageView', 'signup_completed', 'feature_used')",
+        "Event type/name (e.g., '$pageView', 'signup_completed', '$purchase')",
       ),
     fields: z
       .record(z.unknown())
@@ -336,17 +470,34 @@ server.tool(
       .record(z.unknown())
       .optional()
       .describe(
-        "Additional event details (e.g., { url: '/pricing', source: 'campaign' })",
+        "Additional event details. For purchase events, must include: unique.key, value.currency, value.amount",
       ),
   },
   async ({ email, type, fields, details }) => {
     try {
       const bento = getBentoClient();
+
+      // Check if this is a purchase event type
+      const isPurchaseEvent = PURCHASE_EVENT_TYPES.some(
+        (purchaseType) => type.toLowerCase() === purchaseType.toLowerCase(),
+      );
+
+      let finalDetails = details;
+
+      // Validate purchase event details
+      if (isPurchaseEvent) {
+        const validation = validatePurchaseDetails(details);
+        if (!validation.valid) {
+          return validationError(validation.error);
+        }
+        finalDetails = validation.details;
+      }
+
       const result = await bento.V1.track({
         email,
         type,
         fields: fields as Record<string, unknown>,
-        details,
+        details: finalDetails,
       });
 
       return successResponse(
@@ -364,7 +515,7 @@ server.tool(
 // =============================================================================
 
 server.tool(
-  "bento_get_site_stats",
+  "get_site_stats",
   "Get overall statistics for your Bento site including subscriber counts, broadcast counts, and engagement rates.",
   {},
   async () => {
@@ -384,7 +535,7 @@ server.tool(
 // =============================================================================
 
 server.tool(
-  "bento_list_broadcasts",
+  "list_broadcasts",
   "List all email broadcasts/campaigns in your Bento account.",
   {},
   async () => {
@@ -400,7 +551,7 @@ server.tool(
 );
 
 server.tool(
-  "bento_create_broadcast",
+  "create_broadcast",
   "Create a new email broadcast/campaign as a draft. The broadcast will need to be sent manually from the Bento dashboard.",
   {
     name: z.string().min(1).describe("Internal name for the broadcast"),
@@ -476,7 +627,7 @@ server.tool(
 // =============================================================================
 
 server.tool(
-  "bento_list_automations",
+  "list_automations",
   "List email sequences and/or workflows in your Bento account with their templates.",
   {
     type: z
@@ -515,7 +666,7 @@ server.tool(
 // =============================================================================
 
 server.tool(
-  "bento_get_email_template",
+  "get_email_template",
   "Get the full content of an email template by ID. Returns the template's name, subject, HTML content, and stats.",
   {
     id: z.number().positive().describe("Email template ID"),
@@ -537,7 +688,7 @@ server.tool(
 );
 
 server.tool(
-  "bento_update_email_template",
+  "update_email_template",
   "Update an email template's subject line and/or HTML content. Changes take effect immediately for future sends.",
   {
     id: z.number().positive().describe("Email template ID to update"),
