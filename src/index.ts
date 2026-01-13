@@ -263,6 +263,11 @@ server.tool(
       const bento = getBentoClient();
       const tag = await bento.V1.Tags.createTag({ name });
 
+      // API may return null/empty on success - treat as successful creation
+      if (tag === null || (Array.isArray(tag) && tag.length === 0)) {
+        return successResponse(true, `Created tag "${name}"`);
+      }
+
       return successResponse(tag, `Created tag "${name}"`);
     } catch (error) {
       return errorResponse(error, `create tag "${name}"`);
@@ -305,6 +310,11 @@ server.tool(
     try {
       const bento = getBentoClient();
       const field = await bento.V1.Fields.createField({ key });
+
+      // API may return null/empty on success - treat as successful creation
+      if (field === null || (Array.isArray(field) && field.length === 0)) {
+        return successResponse(true, `Created custom field "${key}"`);
+      }
 
       return successResponse(field, `Created custom field "${key}"`);
     } catch (error) {
@@ -611,6 +621,14 @@ server.tool(
           batch_size_per_hour: batchSizePerHour ?? 1000,
         },
       ]);
+
+      // API may return empty array on success - treat as successful creation
+      if (Array.isArray(broadcast) && broadcast.length === 0) {
+        return successResponse(
+          true,
+          `Created draft broadcast "${name}" with subject "${subject}"`,
+        );
+      }
 
       return successResponse(
         broadcast,
