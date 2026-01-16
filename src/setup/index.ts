@@ -14,6 +14,10 @@ import { printManualConfig, printConfigBlock } from "./manual.js";
 
 const BENTO_API_SETTINGS_URL = "https://app.bentonow.com/account/teams";
 
+type PromptOptions = {
+  mask?: boolean;
+};
+
 export interface SetupOptions {
   client?: "claude-code" | "claude-desktop" | "cursor" | "opencode" | "all";
   yes?: boolean;
@@ -48,9 +52,54 @@ function createRL(): readline.Interface {
 async function prompt(
   rl: readline.Interface,
   question: string,
+  options: PromptOptions = {},
 ): Promise<string> {
+  const { mask = false } = options;
+
+  if (!mask) {
+    return new Promise((resolve) => {
+      rl.question(question, (answer) => {
+        resolve(answer.trim());
+      });
+    });
+  }
+
   return new Promise((resolve) => {
+    const maskedRl = rl as readline.Interface & {
+      _writeToOutput?: (stringToWrite: string) => void;
+    };
+    const originalFn = maskedRl._writeToOutput;
+    const writer =
+      originalFn ||
+      function (stringToWrite: string): void {
+        rl.output.write(stringToWrite);
+      };
+
+    maskedRl._writeToOutput = function (stringToWrite: string): void {
+      if (
+        typeof stringToWrite !== "string" ||
+        stringToWrite.includes(question) ||
+        stringToWrite.includes("\u001b")
+      ) {
+        writer.call(this, stringToWrite as string);
+        return;
+      }
+
+      const normalized = stringToWrite.replace(/\r?\n/g, "");
+      if (normalized.length === 0) {
+        writer.call(this, stringToWrite);
+        return;
+      }
+
+      writer.call(this, "*".repeat(normalized.length));
+    };
+
     rl.question(question, (answer) => {
+      if (originalFn) {
+        maskedRl._writeToOutput = originalFn;
+      } else {
+        delete maskedRl._writeToOutput;
+      }
       resolve(answer.trim());
     });
   });
@@ -107,13 +156,14 @@ async function promptCredential(
     const answer = await prompt(
       rl,
       `${name} [${masked}] (press Enter to keep): `,
+      { mask: true },
     );
     return answer || existingValue;
   }
 
   let value = "";
   while (!value) {
-    value = await prompt(rl, `${name}: `);
+    value = await prompt(rl, `${name}: `, { mask: true });
     if (!value) {
       console.log(`  ${envVar} is required.`);
     }
@@ -182,7 +232,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
     yes = false,
     dryRun = false,
     print = false,
-    writeSecrets = false,
+    writeSecrets = true,
   } = options;
 
   // Print-only mode
@@ -282,6 +332,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
       }
 
       console.log("Enter your credentials below:\n");
+      console.log("(Input is hidden while you type.)\n");
 
       const publishableKey = await promptCredential(
         rl,
@@ -377,7 +428,7 @@ async function configureClients(
   creds: Credentials,
   options: { dryRun?: boolean; writeSecrets?: boolean },
 ): Promise<void> {
-  const { dryRun = false, writeSecrets = false } = options;
+  const { dryRun = false, writeSecrets = true } = options;
 
   for (const clientType of clients) {
     console.log(`\nConfiguring ${CLIENT_NAMES[clientType]}...`);
@@ -390,12 +441,10 @@ async function configureClients(
         await claudeDesktop.configure(creds, { dryRun, writeSecrets });
         break;
       case "cursor":
-        // Cursor doesn't support env file references, always write secrets directly
-        await cursor.configure(creds, { dryRun, writeSecrets: true });
+        await cursor.configure(creds, { dryRun, writeSecrets });
         break;
       case "opencode":
-        // OpenCode doesn't support env file references, always write secrets directly
-        await opencode.configure(creds, { dryRun, writeSecrets: true });
+        await opencode.configure(creds, { dryRun, writeSecrets });
         break;
       case "manual":
         printManualConfig(creds);
