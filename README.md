@@ -60,9 +60,17 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
+## Usage with Claude Code
+
+Run this command to add the Bento MCP server to Claude Code:
+
+```bash
+claude mcp add bento --env BENTO_PUBLISHABLE_KEY=your-publishable-key --env BENTO_SECRET_KEY=your-secret-key --env BENTO_SITE_UUID=your-site-uuid -- npx -y @bentonow/bento-mcp
+```
+
 ## Usage with OpenCode
 
-Add to your `opencode.json`:
+Add to your OpenCode config file (`~/.config/opencode/config.json`):
 
 ```json
 {
@@ -80,9 +88,11 @@ Add to your `opencode.json`:
 }
 ```
 
+**Note:** OpenCode does not support referencing environment variables from a `.env` file. You must enter your actual credential values directly in the configuration file.
+
 ## Usage with Cursor
 
-Add to your Cursor MCP settings:
+Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
 
 ```json
 {
@@ -99,6 +109,8 @@ Add to your Cursor MCP settings:
   }
 }
 ```
+
+**Note:** Cursor does not support referencing environment variables from a `.env` file. You must enter your actual credential values directly in the configuration file.
 
 ## Available Tools
 
