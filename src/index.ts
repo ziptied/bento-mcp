@@ -50,6 +50,35 @@ For more information: https://github.com/bentonow/bento-mcp
 }
 
 function startMcpServer() {
+  const MAX_TEMPLATE_HTML_BYTES = 524_288;
+  const MAX_BROADCAST_CONTENT_BYTES = 524_288;
+  const MAX_BATCH_SIZE_PER_HOUR = 250_000;
+
+  function getApiBaseUrl(): string {
+    const rawBaseUrl =
+      process.env.BENTO_API_BASE_URL || "https://app.bentonow.com/api/v1";
+
+    try {
+      const parsed = new URL(rawBaseUrl);
+      const isLocalHost =
+        parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+      const isBentoHost =
+        parsed.hostname.endsWith(".bentonow.com") || parsed.hostname === "bentonow.com";
+      const hasAllowedProtocol =
+        parsed.protocol === "https:" || (isLocalHost && parsed.protocol === "http:");
+
+      if (!hasAllowedProtocol || (!isLocalHost && !isBentoHost)) {
+        throw new Error("Invalid BENTO_API_BASE_URL host");
+      }
+
+      return parsed.toString().replace(/\/$/, "");
+    } catch {
+      throw new Error(
+        "Invalid BENTO_API_BASE_URL. Use https://*.bentonow.com (or http://localhost for local development).",
+      );
+    }
+  }
+
   // Initialize Bento client from environment variables
   function getBentoClient(): Analytics {
     const publishableKey = process.env.BENTO_PUBLISHABLE_KEY;
@@ -613,6 +642,7 @@ Example purchase event details:
       content: z
         .string()
         .min(1)
+        .max(MAX_BROADCAST_CONTENT_BYTES)
         .describe("Email content (HTML, plain text, or markdown)"),
       type: z
         .enum(["plain", "html", "markdown"])
@@ -635,6 +665,7 @@ Example purchase event details:
       batchSizePerHour: z
         .number()
         .positive()
+        .max(MAX_BATCH_SIZE_PER_HOUR)
         .optional()
         .describe("Sending rate limit (emails per hour, default: 1000)"),
     },
@@ -723,6 +754,126 @@ Example purchase event details:
     },
   );
 
+  server.tool(
+    "create_sequence_email",
+    "Create a new email template in a sequence. Supports delay settings and optional envelope fields.",
+    {
+      sequenceId: z
+        .string()
+        .min(1)
+        .describe("Sequence ID (prefix_id, e.g. sequence_abc123)"),
+      subject: z.string().min(1).describe("Email subject line"),
+      html: z
+        .string()
+        .min(1)
+        .max(MAX_TEMPLATE_HTML_BYTES)
+        .describe("Email HTML content (max 524288 bytes)"),
+      delayInterval: z
+        .enum(["minutes", "hours", "days", "months"])
+        .optional()
+        .describe("Delay interval for the email"),
+      delayIntervalCount: z
+        .number()
+        .int()
+        .positive()
+        .max(999)
+        .optional()
+        .describe("Delay interval count (1-999)"),
+      to: z.string().optional().describe("Optional TO field"),
+      cc: z.string().optional().describe("Optional CC field"),
+      bcc: z.string().optional().describe("Optional BCC field"),
+      inboxSnippet: z.string().optional().describe("Inbox preview snippet"),
+      editorChoice: z.string().optional().describe("Editor choice"),
+    },
+    async ({
+      sequenceId,
+      subject,
+      html,
+      delayInterval,
+      delayIntervalCount,
+      to,
+      cc,
+      bcc,
+      inboxSnippet,
+      editorChoice,
+    }) => {
+      if (!/^sequence_[a-zA-Z0-9_-]+$/.test(sequenceId)) {
+        return validationError(
+          "sequenceId must be a valid prefix_id (e.g. sequence_abc123)",
+        );
+      }
+
+      if ((delayInterval && !delayIntervalCount) || (!delayInterval && delayIntervalCount)) {
+        return validationError(
+          "delayInterval and delayIntervalCount must be provided together",
+        );
+      }
+
+      if ([to, cc, bcc].some((value) => value?.match(/[\r\n]/))) {
+        return validationError("to, cc, and bcc cannot contain newlines");
+      }
+
+      try {
+        const bento = getBentoClient();
+        const sequencesApi = bento.V1.Sequences as {
+          createSequenceEmail?: (
+            id: string,
+            parameters: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+
+        const payload = {
+          subject,
+          html,
+          delay_interval: delayInterval,
+          delay_interval_count: delayIntervalCount,
+          to,
+          cc,
+          bcc,
+          inbox_snippet: inboxSnippet,
+          editor_choice: editorChoice,
+        };
+
+        if (typeof sequencesApi.createSequenceEmail === "function") {
+          const created = await sequencesApi.createSequenceEmail(sequenceId, payload);
+          return successResponse(
+            created,
+            `Created sequence email in ${sequenceId}`,
+          );
+        }
+
+        const publishableKey = process.env.BENTO_PUBLISHABLE_KEY as string;
+        const secretKey = process.env.BENTO_SECRET_KEY as string;
+        const siteUuid = process.env.BENTO_SITE_UUID as string;
+        const baseUrl = getApiBaseUrl();
+        const authHeader = Buffer.from(`${publishableKey}:${secretKey}`).toString("base64");
+
+        const response = await fetch(`${baseUrl}/fetch/sequences/${sequenceId}/emails/templates`, {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${authHeader}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            site_uuid: siteUuid,
+            email_template: payload,
+          }),
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(`[${response.status}] - ${message || response.statusText}`);
+        }
+
+        const created = (await response.json()) as unknown;
+        return successResponse(created, `Created sequence email in ${sequenceId}`);
+      } catch (error) {
+        return errorResponse(error, `create sequence email in ${sequenceId}`);
+      }
+    },
+  );
+
   // =============================================================================
   // EMAIL TEMPLATE TOOLS
   // =============================================================================
@@ -760,6 +911,7 @@ Example purchase event details:
       subject: z.string().optional().describe("New subject line"),
       html: z
         .string()
+        .max(MAX_TEMPLATE_HTML_BYTES)
         .optional()
         .describe(
           "New HTML content (must include {{ visitor.unsubscribe_url }} for compliance)",
@@ -790,6 +942,49 @@ Example purchase event details:
         );
       } catch (error) {
         return errorResponse(error, `update email template ${id}`);
+      }
+    },
+  );
+
+  server.tool(
+    "update_sequence_email",
+    "Update a sequence email template by template ID. Supports subject and/or HTML updates.",
+    {
+      templateId: z.number().int().positive().describe("Email template ID"),
+      subject: z.string().optional().describe("New subject line"),
+      html: z
+        .string()
+        .max(MAX_TEMPLATE_HTML_BYTES)
+        .optional()
+        .describe(
+          "New HTML content (must include {{ visitor.unsubscribe_url }} for compliance)",
+        ),
+    },
+    async ({ templateId, subject, html }) => {
+      if (!subject && !html) {
+        return validationError(
+          "Either subject or html (or both) is required to update a sequence email template",
+        );
+      }
+
+      try {
+        const bento = getBentoClient();
+        const template = await bento.V1.EmailTemplates.updateEmailTemplate({
+          id: templateId,
+          subject,
+          html,
+        });
+
+        const updated = [subject && "subject", html && "content"]
+          .filter(Boolean)
+          .join(" and ");
+
+        return successResponse(
+          template,
+          `Updated sequence email template ${templateId} (${updated})`,
+        );
+      } catch (error) {
+        return errorResponse(error, `update sequence email template ${templateId}`);
       }
     },
   );
