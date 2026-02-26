@@ -250,7 +250,8 @@ BENTO_PUBLISHABLE_KEY=xxx BENTO_SECRET_KEY=xxx BENTO_SITE_UUID=xxx npm start
 
 - `manifest.json` declares the server name, entry point, tool roster, and required runtime per the MCP manifest specification so launchers can discover the server automatically.
 - Run `npm run sync:manifest` whenever the package version changes; it keeps `manifest.json`'s `version` field in sync with `package.json` so there's only one authoritative version number.
-- Run `npm run bundle` to compile the TypeScript sources and pack the repository into a distributable `.mcpb` archive via [`mcpb`](https://github.com/modelcontextprotocol/mcpb). The resulting `bento-mcp.mcpb` file includes `manifest.json`, `build/index.js`, and all runtime dependencies, so you can sideload the server into Claude Desktop or any other MCP host without cloning this repo.
+- `npm run bundle` now validates bundle contents after packing and fails if blocked paths are present or required runtime files are missing.
+- `.mcpbignore` provides a strict allowlist so local docs/config files are excluded from release bundles.
 
 ## License
 
