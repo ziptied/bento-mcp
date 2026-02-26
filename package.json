@@ -9,7 +9,9 @@
   "bin": {
     "bento-mcp": "build/index.js"
   },
-  "files": ["build"],
+  "files": [
+    "build"
+  ],
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=build/index.js --packages=external && chmod +x build/index.js",
     "test": "bun test",
@@ -47,7 +49,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@bentonow/bento-node-sdk": "latest",
+    "@bentonow/bento-node-sdk": "^1.0.7",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.24.0"
   },
