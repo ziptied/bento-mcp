@@ -64,7 +64,7 @@ Add to your Claude Desktop configuration file:
 
 Claude Desktop can also load the packaged bundle directly, so you don’t need to edit JSON by hand:
 
-1. Run `npm run bundle`. This compiles the server, syncs `manifest.json`, and creates `bento-mcp.mcpb` in the repo root.
+1. Run `npm run build` (or `npm run bundle`, which aliases `build`). This compiles the server, syncs `manifest.json`, and creates `bento-mcp.mcpb` in the repo root.
 2. In Finder/Explorer, double-click `bento-mcp.mcpb` (or open Claude Desktop → Tools (hammer icon) → **Install Bundle** → **Choose File…** and select `bento-mcp.mcpb`).
 3. Claude will show the Bento MCP install dialog and prompt for the manifest’s user config fields:
    - **Bento Publishable Key** → your `BENTO_PUBLISHABLE_KEY`
@@ -72,7 +72,7 @@ Claude Desktop can also load the packaged bundle directly, so you don’t need t
    - **Bento Site UUID** → your `BENTO_SITE_UUID`
 4. Click **Install**. Claude Desktop copies the bundle and remembers the credentials. The server now appears in the Tools list and can be toggled on/off like any other MCP integration.
 
-To ship an update, re-run `npm run bundle` and repeat steps 2–4 (Claude Desktop will replace the previous bundle version automatically).
+To ship an update, re-run `npm run build` (or `npm run bundle`) and repeat steps 2–4 (Claude Desktop will replace the previous bundle version automatically).
 
 ## Usage with Claude Code
 
@@ -250,7 +250,7 @@ BENTO_PUBLISHABLE_KEY=xxx BENTO_SECRET_KEY=xxx BENTO_SITE_UUID=xxx npm start
 
 - `manifest.json` declares the server name, entry point, tool roster, and required runtime per the MCP manifest specification so launchers can discover the server automatically.
 - Run `npm run sync:manifest` whenever the package version changes; it keeps `manifest.json`'s `version` field in sync with `package.json` so there's only one authoritative version number.
-- `npm run bundle` now validates bundle contents after packing and fails if blocked paths are present or required runtime files are missing.
+- `npm run build` (and `npm run bundle`, which aliases it) validates bundle contents after packing and fails if blocked paths are present or required runtime files are missing.
 - `.mcpbignore` provides a strict allowlist so local docs/config files are excluded from release bundles.
 
 ## License
