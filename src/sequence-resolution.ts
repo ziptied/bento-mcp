@@ -15,6 +15,8 @@ type ResolveSequenceIdInput = {
   getSequences: GetSequences;
 };
 
+const MAX_SEQUENCE_PAGES = 100;
+
 function normalizeName(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -40,7 +42,7 @@ export async function resolveSequenceId({
   }
 
   let page = 1;
-  while (true) {
+  while (page <= MAX_SEQUENCE_PAGES) {
     const sequences = await getSequences({ page });
     if (!sequences || sequences.length === 0) {
       return null;
@@ -57,4 +59,6 @@ export async function resolveSequenceId({
 
     page += 1;
   }
+
+  return null;
 }

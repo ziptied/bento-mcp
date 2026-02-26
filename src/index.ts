@@ -815,12 +815,18 @@ Example purchase event details:
 
   server.tool(
     "create_sequence_email",
-    "Create a new email template in a sequence. Supports delay settings and optional envelope fields.",
+    "Create a new email template in a sequence by ID or name. Supports delay settings and optional envelope fields.",
     {
       sequenceId: z
         .string()
         .min(1)
+        .optional()
         .describe("Sequence ID (prefix_id, e.g. sequence_abc123)"),
+      sequenceName: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Sequence name (exact match, case-insensitive)"),
       subject: z.string().min(1).describe("Email subject line"),
       html: z
         .string()
@@ -846,6 +852,7 @@ Example purchase event details:
     },
     async ({
       sequenceId,
+      sequenceName,
       subject,
       html,
       delayInterval,
@@ -856,7 +863,17 @@ Example purchase event details:
       inboxSnippet,
       editorChoice,
     }) => {
-      if (!/^sequence_[a-zA-Z0-9_-]+$/.test(sequenceId)) {
+      const normalizedSequenceId = sequenceId?.trim();
+      const normalizedSequenceName = sequenceName?.trim();
+
+      if (!normalizedSequenceId && !normalizedSequenceName) {
+        return validationError("Provide either sequenceId or sequenceName");
+      }
+
+      if (
+        normalizedSequenceId &&
+        !/^sequence_[a-zA-Z0-9_-]+$/.test(normalizedSequenceId)
+      ) {
         return validationError(
           "sequenceId must be a valid prefix_id (e.g. sequence_abc123)",
         );
@@ -893,11 +910,46 @@ Example purchase event details:
           editor_choice: editorChoice,
         };
 
+        let resolvedSequenceId = normalizedSequenceId;
+
+        if (!resolvedSequenceId && normalizedSequenceName) {
+          const normalizedNameLower = normalizedSequenceName.toLowerCase();
+          const MAX_SEQUENCE_PAGES = 10;
+
+          for (let page = 1; page <= MAX_SEQUENCE_PAGES; page++) {
+            const sequences = await bento.V1.Sequences.getSequences({ page });
+
+            if (!sequences || sequences.length === 0) {
+              break;
+            }
+
+            const match = sequences.find(
+              (sequence) =>
+                sequence.attributes?.name?.trim().toLowerCase() ===
+                normalizedNameLower,
+            );
+
+            if (match?.id) {
+              resolvedSequenceId = match.id;
+              break;
+            }
+          }
+        }
+
+        if (!resolvedSequenceId) {
+          return validationError(
+            `Sequence "${normalizedSequenceName}" not found. Run list_sequences to confirm the exact name.`,
+          );
+        }
+
         if (typeof sequencesApi.createSequenceEmail === "function") {
-          const created = await sequencesApi.createSequenceEmail(sequenceId, payload);
+          const created = await sequencesApi.createSequenceEmail(
+            resolvedSequenceId,
+            payload,
+          );
           return successResponse(
             created,
-            `Created sequence email in ${sequenceId}`,
+            `Created sequence email in ${resolvedSequenceId}`,
           );
         }
         const publishableKey = process.env.BENTO_PUBLISHABLE_KEY as string;
@@ -906,18 +958,21 @@ Example purchase event details:
         const baseUrl = getApiBaseUrl();
         const authHeader = Buffer.from(`${publishableKey}:${secretKey}`).toString("base64");
 
-        const response = await fetch(`${baseUrl}/fetch/sequences/${sequenceId}/emails/templates`, {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${authHeader}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
+        const response = await fetch(
+          `${baseUrl}/fetch/sequences/${resolvedSequenceId}/emails/templates`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${authHeader}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              site_uuid: siteUuid,
+              email_template: payload,
+            }),
           },
-          body: JSON.stringify({
-            site_uuid: siteUuid,
-            email_template: payload,
-          }),
-        });
+        );
 
         if (!response.ok) {
           const message = await response.text();
@@ -925,9 +980,15 @@ Example purchase event details:
         }
 
         const created = (await response.json()) as unknown;
-        return successResponse(created, `Created sequence email in ${sequenceId}`);
+        return successResponse(
+          created,
+          `Created sequence email in ${resolvedSequenceId}`,
+        );
       } catch (error) {
-        return errorResponse(error, `create sequence email in ${sequenceId}`);
+        return errorResponse(
+          error,
+          `create sequence email in ${normalizedSequenceId || normalizedSequenceName}`,
+        );
       }
     },
   );

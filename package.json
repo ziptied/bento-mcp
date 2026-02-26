@@ -10,10 +10,13 @@
     "bento-mcp": "build/index.js"
   },
   "files": [
-    "build"
+    "build",
+    "bento-mcp.mcpb"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=build/index.js --packages=external && chmod +x build/index.js",
+    "prebuild": "npm run sync:manifest",
+    "build:js": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=build/index.js --packages=external && chmod +x build/index.js",
+    "build": "npm run build:js && npx -y @anthropic-ai/mcpb pack . bento-mcp.mcpb && node scripts/verify-mcpb-contents.mjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "dev": "tsc --watch",
@@ -21,8 +24,7 @@
     "lint": "biome lint .",
     "format": "biome format . --write",
     "sync:manifest": "node scripts/sync-manifest-version.mjs",
-    "prebundle": "npm run sync:manifest",
-    "bundle": "npm run build && npx -y @anthropic-ai/mcpb pack . bento-mcp.mcpb && node scripts/verify-mcpb-contents.mjs",
+    "bundle": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

@@ -77,4 +77,27 @@ describe("resolveSequenceId", () => {
     expect(resolved).toBe("sequence_exact_match");
     expect(requestedPages).toEqual([1, 2]);
   });
+
+  test("returns null after max pagination limit when API never exhausts pages", async () => {
+    const requestedPages: number[] = [];
+    const getSequences = async ({ page }: { page: number }) => {
+      requestedPages.push(page);
+      return [
+        {
+          id: `sequence_${page}`,
+          attributes: { name: `Sequence ${page}` },
+        },
+      ];
+    };
+
+    const resolved = await resolveSequenceId({
+      sequenceName: "does not exist",
+      getSequences,
+    });
+
+    expect(resolved).toBeNull();
+    expect(requestedPages).toHaveLength(100);
+    expect(requestedPages[0]).toBe(1);
+    expect(requestedPages[99]).toBe(100);
+  });
 });
