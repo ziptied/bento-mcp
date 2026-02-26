@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Analytics } from "@bentonow/bento-node-sdk";
 import { createRequire } from "node:module";
 import { runSetup, parseSetupArgs } from "./setup/index.js";
+import { resolveSequenceId } from "./sequence-resolution.js";
 
 // Read version from package.json
 const require = createRequire(import.meta.url);
@@ -797,6 +798,88 @@ Example purchase event details:
       inboxSnippet,
       editorChoice,
     }) => {
+<<<<<<< ours
+      try {
+        if (!sequenceId && !sequenceName) {
+          return validationError(
+            "Provide either sequenceId or sequenceName (see list_sequences)",
+          );
+        }
+
+        const bento = getBentoClient();
+        const resolvedSequenceId = await resolveSequenceId({
+          sequenceId,
+          sequenceName,
+          getSequences: (params) => bento.V1.Sequences.getSequences(params),
+        });
+
+        if (!resolvedSequenceId) {
+          const identifier = sequenceId?.trim() || sequenceName?.trim();
+          return validationError(
+            `Sequence ${identifier} not found. Run list_sequences to confirm the exact ID or name.`,
+||||||| ancestor
+      try {
+        if (!sequenceId && !sequenceName) {
+          return validationError(
+            "Provide either sequenceId or sequenceName (see list_sequences)",
+          );
+        }
+
+        const bento = getBentoClient();
+
+        type BentoSequence = {
+          id: string;
+          attributes?: {
+            name?: string;
+          };
+        };
+
+        const normalizedSequenceId = sequenceId?.trim();
+        const normalizedSequenceName = sequenceName?.trim();
+        const normalizedSequenceNameLower =
+          normalizedSequenceName?.toLowerCase();
+
+        async function findSequence(): Promise<BentoSequence | null> {
+          const MAX_SEQUENCE_PAGES = 10;
+
+          for (let page = 1; page <= MAX_SEQUENCE_PAGES; page++) {
+            const sequences = await bento.V1.Sequences.getSequences({ page });
+
+            if (!sequences || sequences.length === 0) {
+              break;
+            }
+
+            const match = sequences.find((sequence) => {
+              if (normalizedSequenceId && sequence.id === normalizedSequenceId) {
+                return true;
+              }
+
+              if (
+                normalizedSequenceNameLower &&
+                sequence.attributes?.name?.toLowerCase() ===
+                  normalizedSequenceNameLower
+              ) {
+                return true;
+              }
+
+              return false;
+            });
+
+            if (match) {
+              return match;
+            }
+          }
+
+          return null;
+        }
+
+        const targetSequence = await findSequence();
+
+        if (!targetSequence) {
+          const identifier = normalizedSequenceId || sequenceName;
+          return validationError(
+            `Sequence ${identifier} not found. Run list_sequences to confirm the exact ID or name.`,
+=======
       if (!/^sequence_[a-zA-Z0-9_-]+$/.test(sequenceId)) {
         return validationError(
           "sequenceId must be a valid prefix_id (e.g. sequence_abc123)",
@@ -839,9 +922,35 @@ Example purchase event details:
           return successResponse(
             created,
             `Created sequence email in ${sequenceId}`,
+>>>>>>> theirs
           );
         }
 
+<<<<<<< ours
+        const template = await bento.V1.Sequences.createSequenceEmail(
+          resolvedSequenceId,
+          {
+            subject,
+            html,
+            delay_interval: delayInterval,
+            delay_interval_count: delayIntervalCount,
+            inbox_snippet: inboxSnippet,
+            cc,
+            bcc,
+||||||| ancestor
+        const resolvedSequenceId = targetSequence.id;
+
+        const template = await bento.V1.Sequences.createSequenceEmail(
+          resolvedSequenceId,
+          {
+            subject,
+            html,
+            delay_interval: delayInterval,
+            delay_interval_count: delayIntervalCount,
+            inbox_snippet: inboxSnippet,
+            cc,
+            bcc,
+=======
         const publishableKey = process.env.BENTO_PUBLISHABLE_KEY as string;
         const secretKey = process.env.BENTO_SECRET_KEY as string;
         const siteUuid = process.env.BENTO_SITE_UUID as string;
@@ -854,6 +963,7 @@ Example purchase event details:
             Authorization: `Basic ${authHeader}`,
             "Content-Type": "application/json",
             Accept: "application/json",
+>>>>>>> theirs
           },
           body: JSON.stringify({
             site_uuid: siteUuid,

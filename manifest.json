@@ -18,22 +18,10 @@
   "documentation": "https://github.com/bentonow/bento-mcp/blob/main/docs/BENTO_MCP_DOCUMENTATION_SPEC.md",
   "support": "https://github.com/bentonow/bento-mcp/issues",
   "license": "MIT",
-  "privacy_policies": [
-    "https://bentonow.com/legal/privacy"
-  ],
-  "keywords": [
-    "email",
-    "marketing",
-    "automation",
-    "bento",
-    "analytics"
-  ],
+  "privacy_policies": ["https://bentonow.com/legal/privacy"],
+  "keywords": ["email", "marketing", "automation", "bento", "analytics"],
   "compatibility": {
-    "platforms": [
-      "darwin",
-      "linux",
-      "win32"
-    ],
+    "platforms": ["darwin", "linux", "win32"],
     "runtimes": {
       "node": ">=18.17.0"
     }
@@ -65,9 +53,7 @@
     "entry_point": "build/index.js",
     "mcp_config": {
       "command": "node",
-      "args": [
-        "${__dirname}/build/index.js"
-      ],
+      "args": ["${__dirname}/build/index.js"],
       "env": {
         "BENTO_PUBLISHABLE_KEY": "${user_config.publishable_key}",
         "BENTO_SECRET_KEY": "${user_config.secret_key}",

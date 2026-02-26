@@ -9,11 +9,10 @@
   "bin": {
     "bento-mcp": "build/index.js"
   },
-  "files": [
-    "build"
-  ],
+  "files": ["build"],
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=build/index.js --packages=external && chmod +x build/index.js",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "dev": "tsc --watch",
     "start": "node build/index.js",
