@@ -756,6 +756,64 @@ Example purchase event details:
   );
 
   server.tool(
+    "list_workflows",
+    "List workflows in your Bento account with their email templates and stats.",
+    {
+      page: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Page number to fetch (optional)"),
+    },
+    async ({ page }) => {
+      try {
+        const bento = getBentoClient();
+        const workflows = await bento.V1.Workflows.getWorkflows(
+          page ? { page } : undefined,
+        );
+
+        const context = page
+          ? `Workflows in your Bento account (page ${page})`
+          : "Workflows in your Bento account";
+
+        return successResponse(workflows, context);
+      } catch (error) {
+        return errorResponse(error, "list workflows");
+      }
+    },
+  );
+
+  server.tool(
+    "list_sequences",
+    "List email sequences in your Bento account with their email templates. Returns sequence IDs, names, and template summaries.",
+    {
+      page: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Page number to fetch (optional)"),
+    },
+    async ({ page }) => {
+      try {
+        const bento = getBentoClient();
+        const sequences = await bento.V1.Sequences.getSequences(
+          page ? { page } : undefined,
+        );
+
+        const context = page
+          ? `Email sequences in your Bento account (page ${page})`
+          : "Email sequences in your Bento account";
+
+        return successResponse(sequences, context);
+      } catch (error) {
+        return errorResponse(error, "list sequences");
+      }
+    },
+  );
+
+  server.tool(
     "create_sequence_email",
     "Create a new email template in a sequence. Supports delay settings and optional envelope fields.",
     {
@@ -798,88 +856,6 @@ Example purchase event details:
       inboxSnippet,
       editorChoice,
     }) => {
-<<<<<<< ours
-      try {
-        if (!sequenceId && !sequenceName) {
-          return validationError(
-            "Provide either sequenceId or sequenceName (see list_sequences)",
-          );
-        }
-
-        const bento = getBentoClient();
-        const resolvedSequenceId = await resolveSequenceId({
-          sequenceId,
-          sequenceName,
-          getSequences: (params) => bento.V1.Sequences.getSequences(params),
-        });
-
-        if (!resolvedSequenceId) {
-          const identifier = sequenceId?.trim() || sequenceName?.trim();
-          return validationError(
-            `Sequence ${identifier} not found. Run list_sequences to confirm the exact ID or name.`,
-||||||| ancestor
-      try {
-        if (!sequenceId && !sequenceName) {
-          return validationError(
-            "Provide either sequenceId or sequenceName (see list_sequences)",
-          );
-        }
-
-        const bento = getBentoClient();
-
-        type BentoSequence = {
-          id: string;
-          attributes?: {
-            name?: string;
-          };
-        };
-
-        const normalizedSequenceId = sequenceId?.trim();
-        const normalizedSequenceName = sequenceName?.trim();
-        const normalizedSequenceNameLower =
-          normalizedSequenceName?.toLowerCase();
-
-        async function findSequence(): Promise<BentoSequence | null> {
-          const MAX_SEQUENCE_PAGES = 10;
-
-          for (let page = 1; page <= MAX_SEQUENCE_PAGES; page++) {
-            const sequences = await bento.V1.Sequences.getSequences({ page });
-
-            if (!sequences || sequences.length === 0) {
-              break;
-            }
-
-            const match = sequences.find((sequence) => {
-              if (normalizedSequenceId && sequence.id === normalizedSequenceId) {
-                return true;
-              }
-
-              if (
-                normalizedSequenceNameLower &&
-                sequence.attributes?.name?.toLowerCase() ===
-                  normalizedSequenceNameLower
-              ) {
-                return true;
-              }
-
-              return false;
-            });
-
-            if (match) {
-              return match;
-            }
-          }
-
-          return null;
-        }
-
-        const targetSequence = await findSequence();
-
-        if (!targetSequence) {
-          const identifier = normalizedSequenceId || sequenceName;
-          return validationError(
-            `Sequence ${identifier} not found. Run list_sequences to confirm the exact ID or name.`,
-=======
       if (!/^sequence_[a-zA-Z0-9_-]+$/.test(sequenceId)) {
         return validationError(
           "sequenceId must be a valid prefix_id (e.g. sequence_abc123)",
@@ -898,7 +874,7 @@ Example purchase event details:
 
       try {
         const bento = getBentoClient();
-        const sequencesApi = bento.V1.Sequences as {
+        const sequencesApi = bento.V1.Sequences as unknown as {
           createSequenceEmail?: (
             id: string,
             parameters: Record<string, unknown>,
@@ -922,35 +898,8 @@ Example purchase event details:
           return successResponse(
             created,
             `Created sequence email in ${sequenceId}`,
->>>>>>> theirs
           );
         }
-
-<<<<<<< ours
-        const template = await bento.V1.Sequences.createSequenceEmail(
-          resolvedSequenceId,
-          {
-            subject,
-            html,
-            delay_interval: delayInterval,
-            delay_interval_count: delayIntervalCount,
-            inbox_snippet: inboxSnippet,
-            cc,
-            bcc,
-||||||| ancestor
-        const resolvedSequenceId = targetSequence.id;
-
-        const template = await bento.V1.Sequences.createSequenceEmail(
-          resolvedSequenceId,
-          {
-            subject,
-            html,
-            delay_interval: delayInterval,
-            delay_interval_count: delayIntervalCount,
-            inbox_snippet: inboxSnippet,
-            cc,
-            bcc,
-=======
         const publishableKey = process.env.BENTO_PUBLISHABLE_KEY as string;
         const secretKey = process.env.BENTO_SECRET_KEY as string;
         const siteUuid = process.env.BENTO_SITE_UUID as string;
@@ -963,7 +912,6 @@ Example purchase event details:
             Authorization: `Basic ${authHeader}`,
             "Content-Type": "application/json",
             Accept: "application/json",
->>>>>>> theirs
           },
           body: JSON.stringify({
             site_uuid: siteUuid,
