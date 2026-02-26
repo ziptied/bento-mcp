@@ -910,35 +910,15 @@ Example purchase event details:
           editor_choice: editorChoice,
         };
 
-        let resolvedSequenceId = normalizedSequenceId;
-
-        if (!resolvedSequenceId && normalizedSequenceName) {
-          const normalizedNameLower = normalizedSequenceName.toLowerCase();
-          const MAX_SEQUENCE_PAGES = 10;
-
-          for (let page = 1; page <= MAX_SEQUENCE_PAGES; page++) {
-            const sequences = await bento.V1.Sequences.getSequences({ page });
-
-            if (!sequences || sequences.length === 0) {
-              break;
-            }
-
-            const match = sequences.find(
-              (sequence) =>
-                sequence.attributes?.name?.trim().toLowerCase() ===
-                normalizedNameLower,
-            );
-
-            if (match?.id) {
-              resolvedSequenceId = match.id;
-              break;
-            }
-          }
-        }
+        const resolvedSequenceId = await resolveSequenceId({
+          sequenceId: normalizedSequenceId,
+          sequenceName: normalizedSequenceName,
+          getSequences: ({ page }) => bento.V1.Sequences.getSequences({ page }),
+        });
 
         if (!resolvedSequenceId) {
           return validationError(
-            `Sequence "${normalizedSequenceName}" not found. Run list_sequences to confirm the exact name.`,
+            `Sequence ${normalizedSequenceName || normalizedSequenceId} not found. Run list_sequences to confirm the exact ID or name.`,
           );
         }
 
