@@ -19,6 +19,9 @@
     "start": "node build/index.js",
     "lint": "biome lint .",
     "format": "biome format . --write",
+    "sync:manifest": "node scripts/sync-manifest-version.mjs",
+    "prebundle": "npm run sync:manifest",
+    "bundle": "npm run build && npx -y @anthropic-ai/mcpb pack . bento-mcp.mcpb",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
