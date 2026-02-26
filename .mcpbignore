@@ -1,0 +1,27 @@
+# Ignore everything by default, then allow only runtime bundle contents.
+*
+
+# Root files required for distribution metadata and docs.
+!manifest.json
+!package.json
+!package-lock.json
+!README.md
+!LICENSE
+
+# Runtime server code.
+!build
+!build/
+!build/**
+
+# Runtime dependencies (trim known dev-only roots).
+!node_modules
+!node_modules/
+!node_modules/**
+node_modules/.bin/
+node_modules/.package-lock.json
+node_modules/.yarn-integrity
+node_modules/@esbuild/
+node_modules/@biomejs/
+node_modules/@types/
+node_modules/esbuild/
+node_modules/typescript/

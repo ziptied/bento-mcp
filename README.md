@@ -60,6 +60,20 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
+### Installing the `.mcpb` bundle in Claude Desktop
+
+Claude Desktop can also load the packaged bundle directly, so you don’t need to edit JSON by hand:
+
+1. Run `npm run build` (or `npm run bundle`, which aliases `build`). This compiles the server, syncs `manifest.json`, and creates `bento-mcp.mcpb` in the repo root.
+2. In Finder/Explorer, double-click `bento-mcp.mcpb` (or open Claude Desktop → Tools (hammer icon) → **Install Bundle** → **Choose File…** and select `bento-mcp.mcpb`).
+3. Claude will show the Bento MCP install dialog and prompt for the manifest’s user config fields:
+   - **Bento Publishable Key** → your `BENTO_PUBLISHABLE_KEY`
+   - **Bento Secret Key** → your `BENTO_SECRET_KEY`
+   - **Bento Site UUID** → your `BENTO_SITE_UUID`
+4. Click **Install**. Claude Desktop copies the bundle and remembers the credentials. The server now appears in the Tools list and can be toggled on/off like any other MCP integration.
+
+To ship an update, re-run `npm run build` (or `npm run bundle`) and repeat steps 2–4 (Claude Desktop will replace the previous bundle version automatically).
+
 ## Usage with Claude Code
 
 Run this command to add the Bento MCP server to Claude Code:
@@ -158,7 +172,15 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
 
 | Tool | Description |
 |------|-------------|
-| `bento_list_automations` | List sequences and/or workflows with their templates |
+| `bento_list_automations` | List sequences and/or workflows with their templates (supports separate pagination for each type) |
+| `bento_list_workflows` | List workflows with their embedded email templates and stats |
+
+### Sequences
+
+| Tool | Description |
+|------|-------------|
+| `bento_list_sequences` | List all email sequences with their email templates (supports pagination) |
+| `bento_create_sequence_email` | Create a new email template in a sequence (accepts sequence ID or exact name) with optional delay settings |
 
 ### Email Templates
 
@@ -177,6 +199,9 @@ Once configured, you can ask your AI assistant things like:
 - "What are all the tags in my Bento account?"
 - "Create a new broadcast for the spring sale"
 - "List all my email sequences"
+- "Show me my workflows and highlight the email templates"
+- "Create a welcome email in sequence abc123 that sends after 2 days"
+- "Add a follow-up email to my onboarding sequence with a 1 week delay"
 - "Track a 'feature_used' event for user@example.com"
 
 ## Response Format
@@ -220,6 +245,13 @@ npm run format
 # Run locally
 BENTO_PUBLISHABLE_KEY=xxx BENTO_SECRET_KEY=xxx BENTO_SITE_UUID=xxx npm start
 ```
+
+## MCP manifest & bundle
+
+- `manifest.json` declares the server name, entry point, tool roster, and required runtime per the MCP manifest specification so launchers can discover the server automatically.
+- Run `npm run sync:manifest` whenever the package version changes; it keeps `manifest.json`'s `version` field in sync with `package.json` so there's only one authoritative version number.
+- `npm run build` (and `npm run bundle`, which aliases it) validates bundle contents after packing and fails if blocked paths are present or required runtime files are missing.
+- `.mcpbignore` provides a strict allowlist so local docs/config files are excluded from release bundles.
 
 ## License
 

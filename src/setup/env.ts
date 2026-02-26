@@ -40,7 +40,10 @@ export async function saveCredentials(creds: Credentials): Promise<void> {
 
   // Create directory (with secure permissions on Unix)
   if (!existsSync(dir)) {
-    await mkdir(dir, { recursive: true, ...(isWindows ? {} : { mode: 0o700 }) });
+    await mkdir(dir, {
+      recursive: true,
+      ...(isWindows ? {} : { mode: 0o700 }),
+    });
   }
 
   // Write credentials in shell-sourceable format (using platform line endings)
@@ -102,4 +105,3 @@ export async function loadCredentials(): Promise<Credentials | null> {
     return null;
   }
 }
-

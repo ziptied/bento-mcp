@@ -1,0 +1,144 @@
+{
+  "manifest_version": "0.3",
+  "name": "io.bentonow.bento-mcp",
+  "display_name": "Bento MCP Server",
+  "version": "1.3.0",
+  "description": "Email marketing and analytics tooling for AI assistants via Bento.",
+  "long_description": "Provides secure MCP access to Bento so assistants can inspect subscribers, broadcasts, automations, sequences, workflows, and email templates without leaving chat.",
+  "author": {
+    "name": "Bento",
+    "email": "support@bentonow.com",
+    "url": "https://bentonow.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bentonow/bento-mcp.git"
+  },
+  "homepage": "https://bentonow.com",
+  "documentation": "https://github.com/bentonow/bento-mcp/blob/main/docs/BENTO_MCP_DOCUMENTATION_SPEC.md",
+  "support": "https://github.com/bentonow/bento-mcp/issues",
+  "license": "MIT",
+  "privacy_policies": [
+    "https://bentonow.com/legal/privacy"
+  ],
+  "keywords": [
+    "email",
+    "marketing",
+    "automation",
+    "bento",
+    "analytics"
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18.17.0"
+    }
+  },
+  "user_config": {
+    "publishable_key": {
+      "type": "string",
+      "title": "Bento Publishable Key",
+      "description": "Find this in the Bento dashboard under Integrations → API Keys.",
+      "sensitive": true,
+      "required": true
+    },
+    "secret_key": {
+      "type": "string",
+      "title": "Bento Secret Key",
+      "description": "Secret API key for server-to-server calls. Keep this private.",
+      "sensitive": true,
+      "required": true
+    },
+    "site_uuid": {
+      "type": "string",
+      "title": "Bento Site UUID",
+      "description": "Site identifier (e.g., site_123) that scopes all API calls.",
+      "required": true
+    }
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "build/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/build/index.js"
+      ],
+      "env": {
+        "BENTO_PUBLISHABLE_KEY": "${user_config.publishable_key}",
+        "BENTO_SECRET_KEY": "${user_config.secret_key}",
+        "BENTO_SITE_UUID": "${user_config.site_uuid}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "get_subscriber",
+      "description": "Look up a Bento subscriber by email or UUID."
+    },
+    {
+      "name": "batch_import_subscribers",
+      "description": "Import or update subscribers in bulk with custom fields and tags."
+    },
+    {
+      "name": "list_tags",
+      "description": "List all tags in the Bento site."
+    },
+    {
+      "name": "create_tag",
+      "description": "Create a new tag."
+    },
+    {
+      "name": "list_fields",
+      "description": "List all custom fields."
+    },
+    {
+      "name": "create_field",
+      "description": "Create a custom field by key."
+    },
+    {
+      "name": "track_event",
+      "description": "Track custom or purchase events for a subscriber."
+    },
+    {
+      "name": "get_site_stats",
+      "description": "Retrieve aggregate stats for the Bento site."
+    },
+    {
+      "name": "list_broadcasts",
+      "description": "List email broadcasts/campaigns."
+    },
+    {
+      "name": "create_broadcast",
+      "description": "Create a draft email broadcast."
+    },
+    {
+      "name": "list_automations",
+      "description": "List sequences and/or workflows with optional pagination."
+    },
+    {
+      "name": "list_workflows",
+      "description": "List workflows and their email templates."
+    },
+    {
+      "name": "list_sequences",
+      "description": "List email sequences and their templates."
+    },
+    {
+      "name": "create_sequence_email",
+      "description": "Append an email template to a sequence by ID or name."
+    },
+    {
+      "name": "get_email_template",
+      "description": "Fetch an email template by ID."
+    },
+    {
+      "name": "update_email_template",
+      "description": "Update a template's subject or HTML content."
+    }
+  ]
+}

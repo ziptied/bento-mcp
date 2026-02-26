@@ -17,7 +17,11 @@ export interface ConfigureOptions {
 export function getConfigPath(): string {
   const home = homedir();
   if (process.platform === "win32") {
-    return join(process.env.APPDATA || join(home, "AppData", "Roaming"), "opencode", "config.json");
+    return join(
+      process.env.APPDATA || join(home, "AppData", "Roaming"),
+      "opencode",
+      "config.json",
+    );
   }
   return join(home, ".config", "opencode", "config.json");
 }

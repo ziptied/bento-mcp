@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Analytics } from "@bentonow/bento-node-sdk";
 import { createRequire } from "node:module";
 import { runSetup, parseSetupArgs } from "./setup/index.js";
+import { resolveSequenceId } from "./sequence-resolution.js";
 
 // Read version from package.json
 const require = createRequire(import.meta.url);
@@ -755,13 +756,77 @@ Example purchase event details:
   );
 
   server.tool(
+    "list_workflows",
+    "List workflows in your Bento account with their email templates and stats.",
+    {
+      page: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Page number to fetch (optional)"),
+    },
+    async ({ page }) => {
+      try {
+        const bento = getBentoClient();
+        const workflows = await bento.V1.Workflows.getWorkflows(
+          page ? { page } : undefined,
+        );
+
+        const context = page
+          ? `Workflows in your Bento account (page ${page})`
+          : "Workflows in your Bento account";
+
+        return successResponse(workflows, context);
+      } catch (error) {
+        return errorResponse(error, "list workflows");
+      }
+    },
+  );
+
+  server.tool(
+    "list_sequences",
+    "List email sequences in your Bento account with their email templates. Returns sequence IDs, names, and template summaries.",
+    {
+      page: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Page number to fetch (optional)"),
+    },
+    async ({ page }) => {
+      try {
+        const bento = getBentoClient();
+        const sequences = await bento.V1.Sequences.getSequences(
+          page ? { page } : undefined,
+        );
+
+        const context = page
+          ? `Email sequences in your Bento account (page ${page})`
+          : "Email sequences in your Bento account";
+
+        return successResponse(sequences, context);
+      } catch (error) {
+        return errorResponse(error, "list sequences");
+      }
+    },
+  );
+
+  server.tool(
     "create_sequence_email",
-    "Create a new email template in a sequence. Supports delay settings and optional envelope fields.",
+    "Create a new email template in a sequence by ID or name. Supports delay settings and optional envelope fields.",
     {
       sequenceId: z
         .string()
         .min(1)
+        .optional()
         .describe("Sequence ID (prefix_id, e.g. sequence_abc123)"),
+      sequenceName: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Sequence name (exact match, case-insensitive)"),
       subject: z.string().min(1).describe("Email subject line"),
       html: z
         .string()
@@ -787,6 +852,7 @@ Example purchase event details:
     },
     async ({
       sequenceId,
+      sequenceName,
       subject,
       html,
       delayInterval,
@@ -797,7 +863,17 @@ Example purchase event details:
       inboxSnippet,
       editorChoice,
     }) => {
-      if (!/^sequence_[a-zA-Z0-9_-]+$/.test(sequenceId)) {
+      const normalizedSequenceId = sequenceId?.trim();
+      const normalizedSequenceName = sequenceName?.trim();
+
+      if (!normalizedSequenceId && !normalizedSequenceName) {
+        return validationError("Provide either sequenceId or sequenceName");
+      }
+
+      if (
+        normalizedSequenceId &&
+        !/^sequence_[a-zA-Z0-9_-]+$/.test(normalizedSequenceId)
+      ) {
         return validationError(
           "sequenceId must be a valid prefix_id (e.g. sequence_abc123)",
         );
@@ -815,7 +891,7 @@ Example purchase event details:
 
       try {
         const bento = getBentoClient();
-        const sequencesApi = bento.V1.Sequences as {
+        const sequencesApi = bento.V1.Sequences as unknown as {
           createSequenceEmail?: (
             id: string,
             parameters: Record<string, unknown>,
@@ -834,32 +910,49 @@ Example purchase event details:
           editor_choice: editorChoice,
         };
 
-        if (typeof sequencesApi.createSequenceEmail === "function") {
-          const created = await sequencesApi.createSequenceEmail(sequenceId, payload);
-          return successResponse(
-            created,
-            `Created sequence email in ${sequenceId}`,
+        const resolvedSequenceId = await resolveSequenceId({
+          sequenceId: normalizedSequenceId,
+          sequenceName: normalizedSequenceName,
+          getSequences: ({ page }) => bento.V1.Sequences.getSequences({ page }),
+        });
+
+        if (!resolvedSequenceId) {
+          return validationError(
+            `Sequence ${normalizedSequenceName || normalizedSequenceId} not found. Run list_sequences to confirm the exact ID or name.`,
           );
         }
 
+        if (typeof sequencesApi.createSequenceEmail === "function") {
+          const created = await sequencesApi.createSequenceEmail(
+            resolvedSequenceId,
+            payload,
+          );
+          return successResponse(
+            created,
+            `Created sequence email in ${resolvedSequenceId}`,
+          );
+        }
         const publishableKey = process.env.BENTO_PUBLISHABLE_KEY as string;
         const secretKey = process.env.BENTO_SECRET_KEY as string;
         const siteUuid = process.env.BENTO_SITE_UUID as string;
         const baseUrl = getApiBaseUrl();
         const authHeader = Buffer.from(`${publishableKey}:${secretKey}`).toString("base64");
 
-        const response = await fetch(`${baseUrl}/fetch/sequences/${sequenceId}/emails/templates`, {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${authHeader}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
+        const response = await fetch(
+          `${baseUrl}/fetch/sequences/${resolvedSequenceId}/emails/templates`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${authHeader}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              site_uuid: siteUuid,
+              email_template: payload,
+            }),
           },
-          body: JSON.stringify({
-            site_uuid: siteUuid,
-            email_template: payload,
-          }),
-        });
+        );
 
         if (!response.ok) {
           const message = await response.text();
@@ -867,9 +960,15 @@ Example purchase event details:
         }
 
         const created = (await response.json()) as unknown;
-        return successResponse(created, `Created sequence email in ${sequenceId}`);
+        return successResponse(
+          created,
+          `Created sequence email in ${resolvedSequenceId}`,
+        );
       } catch (error) {
-        return errorResponse(error, `create sequence email in ${sequenceId}`);
+        return errorResponse(
+          error,
+          `create sequence email in ${normalizedSequenceId || normalizedSequenceName}`,
+        );
       }
     },
   );

@@ -26,7 +26,12 @@ export interface SetupOptions {
   writeSecrets?: boolean;
 }
 
-type ClientType = "claude-code" | "claude-desktop" | "cursor" | "opencode" | "manual";
+type ClientType =
+  | "claude-code"
+  | "claude-desktop"
+  | "cursor"
+  | "opencode"
+  | "manual";
 
 const CLIENT_NAMES: Record<ClientType, string> = {
   "claude-code": "Claude Code",
@@ -67,13 +72,14 @@ async function prompt(
   return new Promise((resolve) => {
     const maskedRl = rl as readline.Interface & {
       _writeToOutput?: (stringToWrite: string) => void;
+      output?: NodeJS.WritableStream;
     };
     const originalFn = maskedRl._writeToOutput;
     const writer =
       originalFn ||
-      function (stringToWrite: string): void {
-        rl.output.write(stringToWrite);
-      };
+      ((stringToWrite: string): void => {
+        maskedRl.output?.write(stringToWrite);
+      });
 
     maskedRl._writeToOutput = function (stringToWrite: string): void {
       if (
@@ -98,7 +104,7 @@ async function prompt(
       if (originalFn) {
         maskedRl._writeToOutput = originalFn;
       } else {
-        delete maskedRl._writeToOutput;
+        maskedRl._writeToOutput = undefined;
       }
       resolve(answer.trim());
     });
@@ -464,7 +470,13 @@ export function parseSetupArgs(args: string[]): SetupOptions {
 
     switch (arg) {
       case "--client": {
-        const validClients = ["claude-code", "claude-desktop", "cursor", "opencode", "all"];
+        const validClients = [
+          "claude-code",
+          "claude-desktop",
+          "cursor",
+          "opencode",
+          "all",
+        ];
         const clientArg = args[++i];
         if (!clientArg || !validClients.includes(clientArg)) {
           console.error(
